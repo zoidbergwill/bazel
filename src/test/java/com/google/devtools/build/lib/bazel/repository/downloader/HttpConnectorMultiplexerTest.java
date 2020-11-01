@@ -78,11 +78,9 @@ public class HttpConnectorMultiplexerTest {
           Checksum.fromString(
               KeyType.SHA256, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd"));
 
-  @Rule
-  public final ExpectedException thrown = ExpectedException.none();
+  @Rule public final ExpectedException thrown = ExpectedException.none();
 
-  @Rule
-  public final Timeout globalTimeout = new Timeout(10000);
+  @Rule public final Timeout globalTimeout = new Timeout(10000);
 
   private final HttpStream stream1 = fakeStream(URL1, data1);
   private final HttpStream stream2 = fakeStream(URL2, data2);
@@ -129,13 +127,14 @@ public class HttpConnectorMultiplexerTest {
   @Test
   public void emptyList_throwsIae() throws Exception {
     thrown.expect(IllegalArgumentException.class);
-    multiplexer.connect(ImmutableList.<URL>of(), null);
+    multiplexer.connect(ImmutableList.<URL>of(), null, ImmutableMap.of(), Optional.absent());
   }
 
   @Test
   public void ftpUrl_throwsIae() throws Exception {
     thrown.expect(IllegalArgumentException.class);
-    multiplexer.connect(asList(new URL("ftp://lol.example")), null);
+    multiplexer.connect(
+        asList(new URL("ftp://lol.example")), null, ImmutableMap.of(), Optional.absent());
   }
 
   @Test
@@ -148,7 +147,11 @@ public class HttpConnectorMultiplexerTest {
               public void run() {
                 Thread.currentThread().interrupt();
                 try {
-                  multiplexer.connect(asList(new URL("http://lol.example")), null);
+                  multiplexer.connect(
+                      asList(new URL("http://lol.example")),
+                      null,
+                      ImmutableMap.of(),
+                      Optional.absent());
                 } catch (InterruptedIOException ignored) {
                   return;
                 } catch (Exception ignored) {
@@ -165,7 +168,11 @@ public class HttpConnectorMultiplexerTest {
 
   @Test
   public void singleUrl_justCallsConnector() throws Exception {
-    assertThat(toByteArray(multiplexer.connect(asList(URL1), DUMMY_CHECKSUM))).isEqualTo(data1);
+    assertThat(
+            toByteArray(
+                multiplexer.connect(
+                    asList(URL1), DUMMY_CHECKSUM, ImmutableMap.of(), Optional.absent())))
+        .isEqualTo(data1);
     verify(connector).connect(eq(URL1), any(Function.class));
     verify(streamFactory)
         .create(
@@ -181,7 +188,11 @@ public class HttpConnectorMultiplexerTest {
   public void multipleUrlsFail_throwsIOException() throws Exception {
     when(connector.connect(any(URL.class), any(Function.class))).thenThrow(new IOException());
     IOException e =
-        assertThrows(IOException.class, () -> multiplexer.connect(asList(URL1, URL2, URL3), null));
+        assertThrows(
+            IOException.class,
+            () ->
+                multiplexer.connect(
+                    asList(URL1, URL2, URL3), null, ImmutableMap.of(), Optional.absent()));
     assertThat(e).hasMessageThat().contains("All mirrors are down");
     verify(connector, times(3)).connect(any(URL.class), any(Function.class));
     verify(sleeper, times(2)).sleepMillis(anyLong());
@@ -191,15 +202,20 @@ public class HttpConnectorMultiplexerTest {
   @Test
   public void firstUrlFails_returnsSecond() throws Exception {
     doAnswer(
-        new Answer<Void>() {
-          @Override
-          public Void answer(InvocationOnMock invocation) throws Throwable {
-            clock.advanceMillis(1000);
-            return null;
-          }
-        }).when(sleeper).sleepMillis(anyLong());
+            new Answer<Void>() {
+              @Override
+              public Void answer(InvocationOnMock invocation) throws Throwable {
+                clock.advanceMillis(1000);
+                return null;
+              }
+            })
+        .when(sleeper)
+        .sleepMillis(anyLong());
     when(connector.connect(eq(URL1), any(Function.class))).thenThrow(new IOException());
-    assertThat(toByteArray(multiplexer.connect(asList(URL1, URL2), DUMMY_CHECKSUM)))
+    assertThat(
+            toByteArray(
+                multiplexer.connect(
+                    asList(URL1, URL2), DUMMY_CHECKSUM, ImmutableMap.of(), Optional.absent())))
         .isEqualTo(data2);
     assertThat(clock.currentTimeMillis()).isEqualTo(1000L);
     verify(connector).connect(eq(URL1), any(Function.class));
@@ -229,16 +245,21 @@ public class HttpConnectorMultiplexerTest {
               }
             });
     doAnswer(
-        new Answer<Void>() {
-          @Override
-          public Void answer(InvocationOnMock invocation) throws Throwable {
-            barrier.await();
-            TimeUnit.MILLISECONDS.sleep(10000);
-            wasInterrupted.set(false);
-            return null;
-          }
-        }).when(sleeper).sleepMillis(anyLong());
-    assertThat(toByteArray(multiplexer.connect(asList(URL1, URL2), DUMMY_CHECKSUM)))
+            new Answer<Void>() {
+              @Override
+              public Void answer(InvocationOnMock invocation) throws Throwable {
+                barrier.await();
+                TimeUnit.MILLISECONDS.sleep(10000);
+                wasInterrupted.set(false);
+                return null;
+              }
+            })
+        .when(sleeper)
+        .sleepMillis(anyLong());
+    assertThat(
+            toByteArray(
+                multiplexer.connect(
+                    asList(URL1, URL2), DUMMY_CHECKSUM, ImmutableMap.of(), Optional.absent())))
         .isEqualTo(data1);
     assertThat(wasInterrupted.get()).isTrue();
   }
@@ -277,7 +298,8 @@ public class HttpConnectorMultiplexerTest {
               @Override
               public void run() {
                 try {
-                  multiplexer.connect(asList(URL1, URL2), null);
+                  multiplexer.connect(
+                      asList(URL1, URL2), null, ImmutableMap.of(), Optional.absent());
                 } catch (InterruptedIOException ignored) {
                   return;
                 } catch (Exception ignored) {

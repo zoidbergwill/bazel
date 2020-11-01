@@ -97,17 +97,6 @@ final class HttpConnectorMultiplexer {
     this.sleeper = sleeper;
   }
 
-  public HttpStream connect(List<URL> urls, Optional<Checksum> checksum) throws IOException {
-    return connect(
-        urls, checksum, ImmutableMap.<URI, Map<String, String>>of(), Optional.<String>absent());
-  }
-
-  public HttpStream connect(
-      List<URL> urls, Optional<Checksum> checksum, Map<URI, Map<String, String>> authHeaders)
-      throws IOException {
-    return connect(urls, checksum, authHeaders, Optional.<String>absent());
-  }
-
   /**
    * Establishes reliable HTTP connection to a good mirror URL.
    *
@@ -281,7 +270,7 @@ final class HttpConnectorMultiplexer {
         try {
           result =
               establishConnection(
-                  work.url, work.checksum, work.authHeaders, Optional.<String>absent());
+                  work.url, work.checksum, work.authHeaders, Optional.absent());
         } catch (SocketTimeoutException e) {
           // SocketTimeoutException derives from InterruptedIOException, but its occurrence
           // is truly exceptional, so we handle it separately here. Failing to do so hides
