@@ -41,7 +41,6 @@ import javax.annotation.WillCloseWhenClosed;
 @ThreadCompatible
 final class HttpStream extends FilterInputStream {
 
-  static final int PRECHECK_BYTES = 32 * 1024;
   private static final int GZIP_BUFFER_BYTES = 8192;  // same as ByteStreams#copy
   private static final ImmutableSet<String> GZIPPED_EXTENSIONS = ImmutableSet.of("gz", "tgz");
   private static final ImmutableSet<String> GZIP_CONTENT_ENCODING =
@@ -103,22 +102,6 @@ final class HttpStream extends FilterInputStream {
 
         if (checksum.isPresent()) {
           stream = new HashInputStream(stream, checksum.get());
-          byte[] buffer = new byte[PRECHECK_BYTES];
-          int read = 0;
-          while (read < PRECHECK_BYTES) {
-            int amount;
-            amount = stream.read(buffer, read, PRECHECK_BYTES - read);
-            if (amount == -1) {
-              break;
-            }
-            read += amount;
-          }
-          if (read < PRECHECK_BYTES) {
-            stream.close();
-            stream = ByteStreams.limit(new ByteArrayInputStream(buffer), read);
-          } else {
-            stream = new SequenceInputStream(new ByteArrayInputStream(buffer), stream);
-          }
         }
       } catch (Exception e) {
         try {

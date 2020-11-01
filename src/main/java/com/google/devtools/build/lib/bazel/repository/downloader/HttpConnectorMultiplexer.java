@@ -119,10 +119,9 @@ final class HttpConnectorMultiplexer {
    * <p>This routine spawns {@value #MAX_THREADS_PER_CONNECT} threads that initiate connections in
    * parallel to {@code urls} with a {@value #FAILOVER_DELAY_MS} millisecond failover waterfall so
    * earlier mirrors are preferred. Each connector thread retries automatically on transient errors
-   * with exponential backoff. It vets the first 32kB of any payload before selecting a mirror in
-   * order to evade captive portals and avoid ultra-low-bandwidth servers. Even after this method
-   * returns the reliability doesn't stop. Each read operation will intercept timeouts and errors
-   * and block until the connection can be renegotiated transparently right where it left off.
+   * with exponential backoff. Even after this method returns the reliability doesn't stop. Each
+   * read operation will intercept timeouts and errors and block until the connection can be
+   * renegotiated transparently right where it left off.
    *
    * @param urls mirrors by preference; each URL can be: file, http, or https
    * @param checksum checksum lazily checked on entire payload, or empty to disable

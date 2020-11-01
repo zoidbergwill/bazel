@@ -14,10 +14,9 @@
 
 package com.google.devtools.build.lib.bazel.repository.downloader;
 
-import static com.google.common.io.ByteStreams.toByteArray;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.devtools.build.lib.bazel.repository.downloader.DownloaderTestUtils.makeUrl;
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -44,36 +43,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipException;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 /** Integration tests for {@link HttpStream.Factory} and friends. */
 @RunWith(JUnit4.class)
 public class HttpStreamTest {
 
-  private static final Random randoCalrissian = new Random();
-  private static final byte[] data = "hello".getBytes(UTF_8);
-  private static final Optional<Checksum> GOOD_CHECKSUM =
-      Optional.of(
-          Checksum.fromString(
-              KeyType.SHA256, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"));
-  private static final Optional<Checksum> BAD_CHECKSUM =
-      Optional.of(
-          Checksum.fromString(
-              KeyType.SHA256, "0000000000000000000000000000000000000000000000000000000000000000"));
+  private static final byte[] TEST_DATA = new byte[70001];
+  private static final Checksum TEST_CHECKSUM;
+  private static final Checksum BAD_CHECKSUM =
+      Checksum.fromString(
+          KeyType.SHA256, "0000000000000000000000000000000000000000000000000000000000000000");
   private static final URL AURL = makeUrl("http://doodle.example");
-
-  @Rule
-  public final ExpectedException thrown = ExpectedException.none();
-
-  @Rule
-  public final Timeout globalTimeout = new Timeout(10000);
 
   private final HttpURLConnection connection = mock(HttpURLConnection.class);
   private final Reconnector reconnector = mock(Reconnector.class);
@@ -82,40 +66,33 @@ public class HttpStreamTest {
 
   private int nRetries;
 
+  static {
+    new Random().nextBytes(TEST_DATA);
+    TEST_CHECKSUM =
+        Checksum.fromString(KeyType.SHA256, Hashing.sha256().hashBytes(TEST_DATA).toString());
+  }
+
   @Before
   public void before() throws Exception {
     nRetries = 0;
 
-    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(data));
+    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(TEST_DATA));
     when(progress.create(any(InputStream.class), any(), any(URL.class)))
-        .thenAnswer(
-            new Answer<InputStream>() {
-              @Override
-              public InputStream answer(InvocationOnMock invocation) throws Throwable {
-                return (InputStream) invocation.getArguments()[0];
-              }
-            });
+        .thenAnswer((Answer<InputStream>) invocation -> (InputStream) invocation.getArguments()[0]);
   }
 
   @Test
   public void noChecksum_readsOk() throws Exception {
     try (HttpStream stream =
         streamFactory.create(connection, AURL, Optional.absent(), reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(data);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 
   @Test
-  public void smallDataWithValidChecksum_readsOk() throws Exception {
-    try (HttpStream stream = streamFactory.create(connection, AURL, GOOD_CHECKSUM, reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(data);
-    }
-  }
-
-  @Test
-  public void smallDataWithValidChecksum_timesOutInCreateRetriesOk() throws Exception {
+  public void dataWithValidChecksum_timesOutInCreateRetriesOk() throws Exception {
     InputStream inputStream = mock(ByteArrayInputStream.class);
-    InputStream realInputStream = new ByteArrayInputStream(data);
+    InputStream realInputStream = new ByteArrayInputStream(TEST_DATA);
 
     doAnswer(
             (Answer<Integer>)
@@ -133,13 +110,14 @@ public class HttpStreamTest {
     when(reconnector.connect(any(), any())).thenReturn(connection);
     when(connection.getInputStream()).thenReturn(inputStream);
     when(connection.getHeaderField("Accept-Ranges")).thenReturn("bytes");
-    try (HttpStream stream = streamFactory.create(connection, AURL, GOOD_CHECKSUM, reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(data);
+    try (HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.of(TEST_CHECKSUM), reconnector)) {
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 
   @Test
-  public void smallDataWithValidChecksum_timesOutInCreateRepeatedly() throws Exception {
+  public void dataWithValidChecksum_timesOutRepeatedly() throws Exception {
     InputStream inputStream = mock(ByteArrayInputStream.class);
 
     doAnswer(
@@ -153,83 +131,60 @@ public class HttpStreamTest {
     when(reconnector.connect(any(), any())).thenReturn(connection);
     when(connection.getInputStream()).thenReturn(inputStream);
     when(connection.getHeaderField("Accept-Ranges")).thenReturn("bytes");
-    thrown.expect(SocketTimeoutException.class);
 
-    try {
-      streamFactory.create(connection, AURL, GOOD_CHECKSUM, reconnector);
-    } catch (Exception e) {
-      assertThat(nRetries).isGreaterThan(3); // RetryingInputStream.MAX_RESUMES
-      throw e;
-    }
+    HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.of(TEST_CHECKSUM), reconnector);
+    assertThrows(SocketTimeoutException.class, () -> ByteStreams.exhaust(stream));
+    assertThat(nRetries).isGreaterThan(3); // RetryingInputStream.MAX_RESUMES
   }
 
   @Test
-  public void smallDataWithInvalidChecksum_throwsIOExceptionInCreatePhase() throws Exception {
-    thrown.expect(IOException.class);
-    thrown.expectMessage("Checksum");
-    streamFactory.create(connection, AURL, BAD_CHECKSUM, reconnector);
-  }
-
-  @Test
-  public void bigDataWithValidChecksum_readsOk() throws Exception {
-    // at google, we know big data
-    byte[] bigData = new byte[HttpStream.PRECHECK_BYTES + 70001];
-    randoCalrissian.nextBytes(bigData);
-    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(bigData));
+  public void dataWithValidChecksum_readsOk() throws Exception {
     try (HttpStream stream =
-        streamFactory.create(
-            connection,
-            AURL,
-            Optional.of(
-                Checksum.fromString(
-                    KeyType.SHA256, Hashing.sha256().hashBytes(bigData).toString())),
-            reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(bigData);
+        streamFactory.create(connection, AURL, Optional.of(TEST_CHECKSUM), reconnector)) {
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 
   @Test
-  public void bigDataWithInvalidChecksum_throwsIOExceptionAfterCreateOnEof() throws Exception {
-    // the probability of this test flaking is 8.6361686e-78
-    byte[] bigData = new byte[HttpStream.PRECHECK_BYTES + 70001];
-    randoCalrissian.nextBytes(bigData);
-    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(bigData));
-    try (HttpStream stream = streamFactory.create(connection, AURL, BAD_CHECKSUM, reconnector)) {
-      thrown.expect(IOException.class);
-      thrown.expectMessage("Checksum");
-      ByteStreams.exhaust(stream);
-      fail("Should have thrown error before close()");
-    }
+  public void dataWithInvalidChecksum_throwsIOExceptionOnExhaust() throws Exception {
+    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(TEST_DATA));
+    HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.of(BAD_CHECKSUM), reconnector);
+    IOException e =
+        assertThrows(UnrecoverableHttpException.class, () -> ByteStreams.exhaust(stream));
+    assertThat(e).hasMessageThat().contains("Checksum");
   }
 
   @Test
-  public void httpServerSaidGzippedButNotGzipped_throwsZipExceptionInCreate() throws Exception {
+  public void httpServerSaidGzippedButNotGzipped_throwsZipExceptionInCreate() {
     when(connection.getURL()).thenReturn(AURL);
     when(connection.getContentEncoding()).thenReturn("gzip");
-    thrown.expect(ZipException.class);
-    streamFactory.create(connection, AURL, Optional.absent(), reconnector);
+    assertThrows(
+        ZipException.class,
+        () -> streamFactory.create(connection, AURL, Optional.absent(), reconnector));
   }
 
   @Test
   public void javascriptGzippedInTransit_automaticallyGunzips() throws Exception {
     when(connection.getURL()).thenReturn(AURL);
     when(connection.getContentEncoding()).thenReturn("x-gzip");
-    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzipData(data)));
+    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzipData(TEST_DATA)));
     try (HttpStream stream =
         streamFactory.create(connection, AURL, Optional.absent(), reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(data);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 
   @Test
   public void serverSaysTarballPathIsGzipped_doesntAutomaticallyGunzip() throws Exception {
-    byte[] gzData = gzipData(data);
+    byte[] gzData = gzipData(TEST_DATA);
     when(connection.getURL()).thenReturn(new URL("http://doodle.example/foo.tar.gz"));
     when(connection.getContentEncoding()).thenReturn("gzip");
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzData));
     try (HttpStream stream =
         streamFactory.create(connection, AURL, Optional.absent(), reconnector)) {
-      assertThat(toByteArray(stream)).isEqualTo(gzData);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(gzData);
     }
   }
 
@@ -238,20 +193,17 @@ public class HttpStreamTest {
     final AtomicBoolean wasInterrupted = new AtomicBoolean();
     Thread thread =
         new Thread(
-            new Runnable() {
-              @Override
-              public void run() {
-                try (HttpStream stream =
-                    streamFactory.create(connection, AURL, Optional.absent(), reconnector)) {
-                  stream.read();
-                  Thread.currentThread().interrupt();
-                  stream.read();
-                  fail();
-                } catch (InterruptedIOException expected) {
-                  wasInterrupted.set(true);
-                } catch (IOException ignored) {
-                  // ignored
-                }
+            () -> {
+              try (HttpStream stream =
+                  streamFactory.create(connection, AURL, Optional.absent(), reconnector)) {
+                stream.read();
+                Thread.currentThread().interrupt();
+                stream.read();
+                fail();
+              } catch (InterruptedIOException expected) {
+                wasInterrupted.set(true);
+              } catch (IOException ignored) {
+                // ignored
               }
             });
     thread.start();
@@ -270,14 +222,14 @@ public class HttpStreamTest {
 
   @Test
   public void tarballHasNoFormatAndTypeIsGzipped_doesntAutomaticallyGunzip() throws Exception {
-    byte[] gzData = gzipData(data);
+    byte[] gzData = gzipData(TEST_DATA);
     when(connection.getURL()).thenReturn(new URL("http://doodle.example/foo"));
     when(connection.getContentEncoding()).thenReturn("gzip");
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzData));
     try (HttpStream stream =
         streamFactory.create(
             connection, AURL, Optional.absent(), reconnector, Optional.of("tgz"))) {
-      assertThat(toByteArray(stream)).isEqualTo(gzData);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(gzData);
     }
   }
 
@@ -286,14 +238,14 @@ public class HttpStreamTest {
       throws Exception {
     // Similar to tarballHasNoFormatAndTypeIsGzipped_doesntAutomaticallyGunzip but also
     // checks if the private method typeIsGZIP can handle separation of file extensions.
-    byte[] gzData = gzipData(data);
+    byte[] gzData = gzipData(TEST_DATA);
     when(connection.getURL()).thenReturn(new URL("http://doodle.example/foo"));
     when(connection.getContentEncoding()).thenReturn("gzip");
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzData));
     try (HttpStream stream =
         streamFactory.create(
             connection, AURL, Optional.absent(), reconnector, Optional.of("tar.gz"))) {
-      assertThat(toByteArray(stream)).isEqualTo(gzData);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(gzData);
     }
   }
 
@@ -301,11 +253,11 @@ public class HttpStreamTest {
   public void tarballHasNoFormatAndTypeIsNotGzipped_automaticallyGunzip() throws Exception {
     when(connection.getURL()).thenReturn(new URL("http://doodle.example/foo"));
     when(connection.getContentEncoding()).thenReturn("gzip");
-    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzipData(data)));
+    when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzipData(TEST_DATA)));
     try (HttpStream stream =
         streamFactory.create(
             connection, AURL, Optional.absent(), reconnector, Optional.of("tar"))) {
-      assertThat(toByteArray(stream)).isEqualTo(data);
+      assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 }
