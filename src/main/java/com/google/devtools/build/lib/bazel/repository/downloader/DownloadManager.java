@@ -43,13 +43,15 @@ import java.util.Map;
 public class DownloadManager {
 
   private final RepositoryCache repositoryCache;
+  private final Downloader defaultDownloader;
+
   private List<Path> distdir = ImmutableList.of();
   private UrlRewriter rewriter;
-  private final Downloader downloader;
+  private Downloader downloader;
 
   public DownloadManager(RepositoryCache repositoryCache, Downloader downloader) {
     this.repositoryCache = repositoryCache;
-    this.downloader = downloader;
+    this.defaultDownloader = downloader;
   }
 
   public void setDistdir(List<Path> distdir) {
@@ -58,6 +60,14 @@ public class DownloadManager {
 
   public void setUrlRewriter(UrlRewriter rewriter) {
     this.rewriter = rewriter;
+  }
+
+  private Downloader getDownloader() {
+    return downloader != null ? downloader : defaultDownloader;
+  }
+
+  public void setDownloader(Downloader downloader) {
+    this.downloader = downloader;
   }
 
   /**
@@ -195,7 +205,7 @@ public class DownloadManager {
     }
 
     try {
-      downloader.download(
+      getDownloader().download(
           urls, authHeaders, checksum, canonicalId, destination, eventHandler, clientEnv, type);
     } catch (InterruptedIOException e) {
       throw new InterruptedException(e.getMessage());
