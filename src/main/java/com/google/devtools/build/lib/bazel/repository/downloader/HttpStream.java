@@ -50,12 +50,6 @@ final class HttpStream extends FilterInputStream {
       this.progressInputStreamFactory = progressInputStreamFactory;
     }
 
-    HttpStream create(
-        @WillCloseWhenClosed URLConnection connection, URL originalUrl, Optional<Checksum> checksum)
-        throws IOException {
-      return create(connection, originalUrl, checksum, Optional.<String>absent());
-    }
-
     @SuppressWarnings("resource")
     HttpStream create(
         @WillCloseWhenClosed URLConnection connection,

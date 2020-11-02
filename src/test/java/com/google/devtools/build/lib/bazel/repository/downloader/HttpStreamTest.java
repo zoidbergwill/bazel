@@ -78,14 +78,16 @@ public class HttpStreamTest {
 
   @Test
   public void noChecksum_readsOk() throws Exception {
-    try (HttpStream stream = streamFactory.create(connection, AURL, Optional.absent())) {
+    try (HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
       assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
 
   @Test
   public void dataWithValidChecksum_readsOk() throws Exception {
-    try (HttpStream stream = streamFactory.create(connection, AURL, Optional.of(TEST_CHECKSUM))) {
+    try (HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.of(TEST_CHECKSUM), Optional.absent())) {
       assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
@@ -93,7 +95,8 @@ public class HttpStreamTest {
   @Test
   public void dataWithInvalidChecksum_throwsIOExceptionOnExhaust() throws Exception {
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(TEST_DATA));
-    HttpStream stream = streamFactory.create(connection, AURL, Optional.of(BAD_CHECKSUM));
+    HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.of(BAD_CHECKSUM), Optional.absent());
     IOException e =
         assertThrows(UnrecoverableHttpException.class, () -> ByteStreams.exhaust(stream));
     assertThat(e).hasMessageThat().contains("Checksum");
@@ -104,7 +107,8 @@ public class HttpStreamTest {
     when(connection.getURL()).thenReturn(AURL);
     when(connection.getContentEncoding()).thenReturn("gzip");
     assertThrows(
-        ZipException.class, () -> streamFactory.create(connection, AURL, Optional.absent()));
+        ZipException.class,
+        () -> streamFactory.create(connection, AURL, Optional.absent(), Optional.absent()));
   }
 
   @Test
@@ -112,7 +116,8 @@ public class HttpStreamTest {
     when(connection.getURL()).thenReturn(AURL);
     when(connection.getContentEncoding()).thenReturn("x-gzip");
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzipData(TEST_DATA)));
-    try (HttpStream stream = streamFactory.create(connection, AURL, Optional.absent())) {
+    try (HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
       assertThat(ByteStreams.toByteArray(stream)).isEqualTo(TEST_DATA);
     }
   }
@@ -123,7 +128,8 @@ public class HttpStreamTest {
     when(connection.getURL()).thenReturn(new URL("http://doodle.example/foo.tar.gz"));
     when(connection.getContentEncoding()).thenReturn("gzip");
     when(connection.getInputStream()).thenReturn(new ByteArrayInputStream(gzData));
-    try (HttpStream stream = streamFactory.create(connection, AURL, Optional.absent())) {
+    try (HttpStream stream =
+        streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
       assertThat(ByteStreams.toByteArray(stream)).isEqualTo(gzData);
     }
   }
@@ -134,7 +140,8 @@ public class HttpStreamTest {
     Thread thread =
         new Thread(
             () -> {
-              try (HttpStream stream = streamFactory.create(connection, AURL, Optional.absent())) {
+              try (HttpStream stream =
+                  streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
                 stream.read();
                 Thread.currentThread().interrupt();
                 stream.read();
