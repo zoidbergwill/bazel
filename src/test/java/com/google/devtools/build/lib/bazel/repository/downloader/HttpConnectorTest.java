@@ -334,7 +334,7 @@ public class HttpConnectorTest {
   /**
    * It is important part of {@link HttpConnector} contract to not throw raw {@link
    * SocketTimeoutException} because it extends {@link java.io.InterruptedIOException} and {@link
-   * HttpConnectorMultiplexer} relies on {@link java.io.InterruptedIOException} to only be thrown
+   * HttpDownloader} relies on {@link java.io.InterruptedIOException} to only be thrown
    * when actual interruption happened.
    */
   @Test

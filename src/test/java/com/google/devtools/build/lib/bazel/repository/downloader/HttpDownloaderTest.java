@@ -17,26 +17,31 @@ import static com.google.common.truth.Truth.assertThat;
 import static com.google.devtools.build.lib.bazel.repository.downloader.DownloaderTestUtils.sendLines;
 import static com.google.devtools.build.lib.bazel.repository.downloader.HttpParser.readHttpRequest;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 
+import com.google.common.base.Function;
 import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.bazel.repository.cache.RepositoryCache;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.vfs.DigestHashFunction;
 import com.google.devtools.build.lib.vfs.JavaIoFileSystem;
 import com.google.devtools.build.lib.vfs.Path;
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -44,7 +49,6 @@ import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -53,8 +57,6 @@ import org.junit.runners.JUnit4;
 public class HttpDownloaderTest {
 
   @Rule public final TemporaryFolder workingDir = new TemporaryFolder();
-
-  @Rule public final Timeout timeout = new Timeout(30, SECONDS);
 
   private final RepositoryCache repositoryCache = mock(RepositoryCache.class);
   private final HttpDownloader httpDownloader = new HttpDownloader();
@@ -95,6 +97,52 @@ public class HttpDownloaderTest {
                       "Content-Length: 5",
                       "",
                       "hello");
+                }
+                return null;
+              });
+
+      Path resultingFile =
+          downloadManager.download(
+              Collections.singletonList(
+                  new URL(String.format("http://localhost:%d/foo", server.getLocalPort()))),
+              Collections.emptyMap(),
+              Optional.absent(),
+              "testCanonicalId",
+              Optional.absent(),
+              fs.getPath(workingDir.newFile().getAbsolutePath()),
+              eventHandler,
+              Collections.emptyMap(),
+              "testRepo");
+
+      assertThat(new String(readFile(resultingFile), UTF_8)).isEqualTo("hello");
+    }
+  }
+
+  @Test
+  public void downloadFrom1UrlRetriesAfterErrors() throws IOException, InterruptedException {
+    try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName(null))) {
+      @SuppressWarnings("unused")
+      Future<?> possiblyIgnoredError =
+          executor.submit(
+              () -> {
+                ImmutableList<String> results = ImmutableList.<String>builder()
+                    .add("HTTP/1.1 500 Internal Server Error")
+                    .add("HTTP/1.1 403 Forbidden")
+                    .add("HTTP/1.1 200 OK")
+                    .build();
+                for (String result : results) {
+                  try (Socket socket = server.accept()) {
+                    readHttpRequest(socket.getInputStream());
+                    sendLines(
+                        socket,
+                        result,
+                        "Date: Fri, 31 Dec 1999 23:59:59 GMT",
+                        "Connection: close",
+                        "Content-Type: text/plain",
+                        "Content-Length: 5",
+                        "",
+                        result.contains("200 OK") ? "hello" : "error");
+                  }
                 }
                 return null;
               });
@@ -319,6 +367,59 @@ public class HttpDownloaderTest {
         }
       }
     }
+  }
+
+  private static HttpStream fakeStream(URL url, byte[] data) {
+    return new HttpStream(new ByteArrayInputStream(data), url);
+  }
+
+  @Test
+  public void testHeaderComputationFunction() throws Exception {
+    Map<String, String> baseHeaders =
+        ImmutableMap.of("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+    Map<URI, Map<String, String>> additionalHeaders =
+        ImmutableMap.of(
+            new URI("http://hosting.example.com/user/foo/file.txt"),
+            ImmutableMap.of("Authentication", "Zm9vOmZvb3NlY3JldA=="));
+
+    Function<URL, ImmutableMap<String, String>> headerFunction =
+        HttpDownloader.getHeaderFunction(baseHeaders, additionalHeaders);
+
+    // Unreleated URL
+    assertThat(headerFunction.apply(new URL("http://example.org/some/path/file.txt")))
+        .containsExactly("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+
+    // With auth headers
+    assertThat(headerFunction.apply(new URL("http://hosting.example.com/user/foo/file.txt")))
+        .containsExactly(
+            "Accept-Encoding",
+            "gzip",
+            "User-Agent",
+            "Bazel/testing",
+            "Authentication",
+            "Zm9vOmZvb3NlY3JldA==");
+
+    // Other hosts
+    assertThat(headerFunction.apply(new URL("http://hosting2.example.com/user/foo/file.txt")))
+        .containsExactly("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+    assertThat(headerFunction.apply(new URL("http://sub.hosting.example.com/user/foo/file.txt")))
+        .containsExactly("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+    assertThat(headerFunction.apply(new URL("http://example.com/user/foo/file.txt")))
+        .containsExactly("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+    assertThat(
+            headerFunction.apply(
+                new URL("http://hosting.example.com.evil.example/user/foo/file.txt")))
+        .containsExactly("Accept-Encoding", "gzip", "User-Agent", "Bazel/testing");
+
+    // Verify that URL-specific headers overwrite
+    Map<String, String> annonAuth =
+        ImmutableMap.of("Authentication", "YW5vbnltb3VzOmZvb0BleGFtcGxlLm9yZw==");
+    Function<URL, ImmutableMap<String, String>> combinedHeaders =
+        HttpDownloader.getHeaderFunction(annonAuth, additionalHeaders);
+    assertThat(combinedHeaders.apply(new URL("http://hosting.example.com/user/foo/file.txt")))
+        .containsExactly("Authentication", "Zm9vOmZvb3NlY3JldA==");
+    assertThat(combinedHeaders.apply(new URL("http://unreleated.example.org/user/foo/file.txt")))
+        .containsExactly("Authentication", "YW5vbnltb3VzOmZvb0BleGFtcGxlLm9yZw==");
   }
 
   private static byte[] readFile(Path path) throws IOException {

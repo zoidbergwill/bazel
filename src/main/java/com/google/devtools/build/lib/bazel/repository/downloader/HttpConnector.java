@@ -45,8 +45,6 @@ import javax.annotation.WillClose;
 /**
  * Class for establishing connections to HTTP servers for downloading files.
  *
- * <p>This class must be used in conjunction with {@link HttpConnectorMultiplexer}.
- *
  * <p>Instances are thread safe and can be reused.
  */
 @ThreadSafe
@@ -108,8 +106,7 @@ class HttpConnector {
     while (true) {
       HttpURLConnection connection = null;
       try {
-        connection = (HttpURLConnection)
-            url.openConnection(proxyHelper.createProxyIfNeeded(url));
+        connection = (HttpURLConnection) url.openConnection(proxyHelper.createProxyIfNeeded(url));
         // TODO(zecke): Revise once https://bugs.openjdk.java.net/browse/JDK-8163921 is fixed.
         connection.addRequestProperty("Accept", "text/html, image/gif, image/jpeg, */*");
         boolean isAlreadyCompressed =
@@ -178,10 +175,10 @@ class HttpConnector {
           // waiting.  If the client has an outstanding request in transit, the client MAY repeat
           // that request on a new connection. Quoth RFC7231 § 6.5.7
           throw new IOException(describeHttpResponse(connection));
-        } else if (code < 500          // 4xx means client seems to have erred quoth RFC7231 § 6.5
-                    || code == 501     // Server doesn't support function quoth RFC7231 § 6.6.2
-                    || code == 502     // Host not configured on server cf. RFC7231 § 6.6.3
-                    || code == 505) {  // Server refuses to support version quoth RFC7231 § 6.6.6
+        } else if (code < 500 // 4xx means client seems to have erred quoth RFC7231 § 6.5
+            || code == 501 // Server doesn't support function quoth RFC7231 § 6.6.2
+            || code == 502 // Host not configured on server cf. RFC7231 § 6.6.3
+            || code == 505) { // Server refuses to support version quoth RFC7231 § 6.6.6
           // This is a permanent error so we're not going to retry.
           readAllBytesAndClose(connection.getErrorStream());
           throw new UnrecoverableHttpException(describeHttpResponse(connection));
@@ -223,8 +220,8 @@ class HttpConnector {
             // out. So rethrow them as ordinary IOExceptions.
             e = new IOException(e.getMessage(), e);
           } else {
-            eventHandler
-                .handle(Event.progress(format("Error connecting to %s: %s", url, e.getMessage())));
+            eventHandler.handle(
+                Event.progress(format("Error connecting to %s: %s", url, e.getMessage())));
           }
           for (Throwable suppressed : suppressions) {
             e.addSuppressed(suppressed);
@@ -264,9 +261,8 @@ class HttpConnector {
   }
 
   // Exhausts all bytes in an HTTP to make it easier for Java infrastructure to reuse sockets.
-  private static void readAllBytesAndClose(
-      @WillClose @Nullable InputStream stream)
-          throws IOException {
+  private static void readAllBytesAndClose(@WillClose @Nullable InputStream stream)
+      throws IOException {
     if (stream != null) {
       ByteStreams.exhaust(stream);
       stream.close();

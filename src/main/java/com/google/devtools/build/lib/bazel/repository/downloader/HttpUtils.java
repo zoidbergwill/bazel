@@ -16,14 +16,12 @@ package com.google.devtools.build.lib.bazel.repository.downloader;
 
 import com.google.common.base.Ascii;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.Collection;
 
 /** HTTP utilities. */
 public final class HttpUtils {
@@ -41,10 +39,6 @@ public final class HttpUtils {
     // An implementation should accept uppercase letters as equivalent to lowercase in scheme names
     // (e.g., allow "HTTP" as well as "http") for the sake of robustness. Quoth RFC3986 § 3.1
     return Ascii.equalsIgnoreCase(protocol, url.getProtocol());
-  }
-
-  static void checkUrlArgument(URL url) {
-    Preconditions.checkArgument(isUrlSupportedByDownloader(url), "unsupported protocol: %s", url);
   }
 
   static String getExtension(String path) {
