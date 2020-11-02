@@ -29,7 +29,6 @@ import com.google.devtools.build.lib.util.Sleeper;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
@@ -90,10 +89,10 @@ class HttpConnector {
   }
 
   URLConnection connect(URL originalUrl, Function<URL, ImmutableMap<String, String>> requestHeaders)
-      throws IOException {
+      throws IOException, InterruptedException {
 
     if (Thread.interrupted()) {
-      throw new InterruptedIOException();
+      throw new InterruptedException();
     }
     URL url = originalUrl;
     if (HttpUtils.isProtocol(url, "file")) {
@@ -209,20 +208,11 @@ class HttpConnector {
           // If we got connect timeout, we're already doing exponential backoff, so no point
           // in sleeping too.
           timeout = 1;
-        } else if (e instanceof InterruptedIOException) {
-          // Please note that SocketTimeoutException is a subtype of InterruptedIOException.
-          throw e;
+        } else {
+          eventHandler.handle(
+              Event.progress(format("Error connecting to %s: %s", url, e.getMessage())));
         }
         if (++retries == MAX_RETRIES) {
-          if (e instanceof SocketTimeoutException) {
-            // SocketTimeoutExceptions are InterruptedIOExceptions; however they do not signify
-            // an external interruption, but simply a failed download due to some server timing
-            // out. So rethrow them as ordinary IOExceptions.
-            e = new IOException(e.getMessage(), e);
-          } else {
-            eventHandler.handle(
-                Event.progress(format("Error connecting to %s: %s", url, e.getMessage())));
-          }
           for (Throwable suppressed : suppressions) {
             e.addSuppressed(suppressed);
           }
@@ -233,11 +223,7 @@ class HttpConnector {
         eventHandler.handle(
             Event.progress(format("Failed to connect to %s trying again in %,dms", url, timeout)));
         url = originalUrl;
-        try {
-          sleeper.sleepMillis(timeout);
-        } catch (InterruptedException translated) {
-          throw new InterruptedIOException();
-        }
+        sleeper.sleepMillis(timeout);
       } catch (RuntimeException e) {
         if (connection != null) {
           connection.disconnect();

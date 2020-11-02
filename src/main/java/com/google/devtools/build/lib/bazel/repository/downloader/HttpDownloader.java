@@ -31,9 +31,7 @@ import com.google.devtools.build.lib.util.Sleeper;
 import com.google.devtools.build.lib.vfs.Path;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -122,18 +120,9 @@ public class HttpDownloader implements Downloader {
                   checksum,
                   type);
           OutputStream out = destination.getOutputStream()) {
-        try {
-          copyStream(payload, out);
-        } catch (SocketTimeoutException e) {
-          // SocketTimeoutExceptions are InterruptedIOExceptions; however they do not signify
-          // an external interruption, but simply a failed download due to some server timing
-          // out. So rethrow them as ordinary IOExceptions.
-          throw new IOException(e);
-        }
+        copyStream(payload, out);
         success = true;
         break;
-      } catch (InterruptedIOException e) {
-        throw new InterruptedException(e.getMessage());
       } catch (IOException e) {
         if (ioExceptions.isEmpty()) {
           ioExceptions = new ArrayList<>(1);

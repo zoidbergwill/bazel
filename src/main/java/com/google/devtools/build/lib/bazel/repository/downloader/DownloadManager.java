@@ -28,7 +28,6 @@ import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
@@ -204,12 +203,8 @@ public class DownloadManager {
       }
     }
 
-    try {
-      getDownloader().download(
-          urls, authHeaders, checksum, canonicalId, destination, eventHandler, clientEnv, type);
-    } catch (InterruptedIOException e) {
-      throw new InterruptedException(e.getMessage());
-    }
+    getDownloader().download(
+        urls, authHeaders, checksum, canonicalId, destination, eventHandler, clientEnv, type);
 
     if (isCachingByProvidedChecksum) {
       repositoryCache.put(

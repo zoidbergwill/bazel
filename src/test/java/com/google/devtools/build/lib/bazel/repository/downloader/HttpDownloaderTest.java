@@ -362,8 +362,7 @@ public class HttpDownloaderTest {
         assertThat(expected.getSuppressed()).hasLength(2);
 
         for (Throwable suppressed : expected.getSuppressed()) {
-          assertThat(suppressed).isInstanceOf(IOException.class);
-          assertThat(suppressed).hasCauseThat().isInstanceOf(SocketTimeoutException.class);
+          assertThat(suppressed).isInstanceOf(SocketTimeoutException.class);
         }
       }
     }

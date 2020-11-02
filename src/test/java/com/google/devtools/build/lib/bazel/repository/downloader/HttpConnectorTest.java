@@ -42,7 +42,6 @@ import java.net.InetAddress;
 import java.net.Proxy;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Locale;
@@ -327,41 +326,6 @@ public class HttpConnectorTest {
               ISO_8859_1)) {
         assertThat(CharStreams.toString(payload)).isEqualTo("hello");
         assertThat(clock.currentTimeMillis()).isEqualTo(1);
-      }
-    }
-  }
-
-  /**
-   * It is important part of {@link HttpConnector} contract to not throw raw {@link
-   * SocketTimeoutException} because it extends {@link java.io.InterruptedIOException} and {@link
-   * HttpDownloader} relies on {@link java.io.InterruptedIOException} to only be thrown
-   * when actual interruption happened.
-   */
-  @Test
-  public void socketTimeout_throwsIOExceptionInsteadOfSocketTimeoutException() throws Exception {
-    try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName(null))) {
-      @SuppressWarnings("unused")
-      Future<?> possiblyIgnoredError =
-          executor.submit(
-              () -> {
-                try (Socket socket = server.accept()) {
-                  // Do nothing to cause SocketTimeoutException on client side.
-                }
-                return null;
-              });
-
-      try (Reader payload =
-          new InputStreamReader(
-              connector
-                  .connect(
-                      new URL(String.format("http://localhost:%d", server.getLocalPort())),
-                      url -> ImmutableMap.<String, String>of())
-                  .getInputStream(),
-              ISO_8859_1)) {
-        fail("Should have thrown");
-      } catch (IOException expected) {
-        assertThat(expected).hasCauseThat().isInstanceOf(SocketTimeoutException.class);
-        assertThat(expected).hasCauseThat().hasMessageThat().ignoringCase().contains("timed out");
       }
     }
   }
