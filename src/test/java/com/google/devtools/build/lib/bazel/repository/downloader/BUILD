@@ -33,7 +33,6 @@ java_library(
 java_test(
     name = "DownloaderTestSuite",
     size = "medium",
-    flaky = True,
     tags = [
         "requires-network",
         "rules",
