@@ -25,7 +25,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.bazel.repository.cache.RepositoryCache.KeyType;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
@@ -38,12 +37,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.util.Locale;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.Phaser;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -61,7 +58,7 @@ public class HttpConnectorMultiplexerIntegrationTest {
 
   @Rule public final Timeout globalTimeout = new Timeout(20000);
 
-  private final ExecutorService executor = Executors.newFixedThreadPool(3);
+  private final ExecutorService executor = Executors.newFixedThreadPool(1);
   private final ProxyHelper proxyHelper = mock(ProxyHelper.class);
   private final ExtendedEventHandler eventHandler = mock(ExtendedEventHandler.class);
   private final ManualClock clock = new ManualClock();
@@ -74,7 +71,7 @@ public class HttpConnectorMultiplexerIntegrationTest {
   private final HttpStream.Factory httpStreamFactory =
       new HttpStream.Factory(progressInputStreamFactory);
   private final HttpConnectorMultiplexer multiplexer =
-      new HttpConnectorMultiplexer(eventHandler, connector, httpStreamFactory, clock, sleeper);
+      new HttpConnectorMultiplexer(eventHandler, connector, httpStreamFactory);
 
   private static final Optional<Checksum> HELLO_SHA256 =
       Optional.of(
@@ -87,140 +84,75 @@ public class HttpConnectorMultiplexerIntegrationTest {
   }
 
   @After
-  public void after() throws Exception {
+  public void after() {
     executor.shutdown();
   }
 
   @Test
   public void normalRequest() throws Exception {
-    final Phaser phaser = new Phaser(3);
-    try (ServerSocket server1 = new ServerSocket(0, 1, InetAddress.getByName(null));
-        ServerSocket server2 = new ServerSocket(0, 1, InetAddress.getByName(null))) {
-      for (final ServerSocket server : asList(server1, server2)) {
-        @SuppressWarnings("unused")
-        Future<?> possiblyIgnoredError =
-            executor.submit(
-                new Callable<Object>() {
-                  @Override
-                  public Object call() throws Exception {
-                    for (String status : asList("503 MELTDOWN", "500 ERROR", "200 OK")) {
-                      phaser.arriveAndAwaitAdvance();
-                      try (Socket socket = server.accept()) {
-                        readHttpRequest(socket.getInputStream());
-                        sendLines(
-                            socket,
-                            "HTTP/1.1 " + status,
-                            "Date: Fri, 31 Dec 1999 23:59:59 GMT",
-                            "Connection: close",
-                            "",
-                            "hello");
-                      }
-                    }
-                    return null;
-                  }
-                });
-      }
-      phaser.arriveAndAwaitAdvance();
-      phaser.arriveAndDeregister();
-      try (HttpStream stream =
-          multiplexer.connect(
-              ImmutableList.of(
-                  new URL(String.format("http://localhost:%d", server1.getLocalPort())),
-                  new URL(String.format("http://localhost:%d", server2.getLocalPort()))),
-              HELLO_SHA256,
-              ImmutableMap.of(),
-              Optional.absent())) {
-        assertThat(toByteArray(stream)).isEqualTo("hello".getBytes(US_ASCII));
-      }
-    }
-  }
-
-  @Test
-  public void allMirrorsDown_throwsIOException() throws Exception {
-    final CyclicBarrier barrier = new CyclicBarrier(4);
-    try (ServerSocket server1 = new ServerSocket(0, 1, InetAddress.getByName(null));
-        ServerSocket server2 = new ServerSocket(0, 1, InetAddress.getByName(null));
-        ServerSocket server3 = new ServerSocket(0, 1, InetAddress.getByName(null))) {
-      for (final ServerSocket server : asList(server1, server2, server3)) {
-        Future<?> unused =
-            executor.submit(
-                new Callable<Object>() {
-                  @Override
-                  public Object call() throws Exception {
-                    barrier.await();
-                    while (true) {
-                      try (Socket socket = server.accept()) {
-                        readHttpRequest(socket.getInputStream());
-                        sendLines(
-                            socket,
-                            "HTTP/1.1 503 MELTDOWN",
-                            "Date: Fri, 31 Dec 1999 23:59:59 GMT",
-                            "Warning: https://youtu.be/6M6samPEMpM",
-                            "Connection: close",
-                            "",
-                            "");
-                      }
-                    }
-                  }
-                });
-      }
-      barrier.await();
-      thrown.expect(IOException.class);
-      thrown.expectMessage("All mirrors are down: [GET returned 503 MELTDOWN]");
-      multiplexer.connect(
-          ImmutableList.of(
-              new URL(String.format("http://localhost:%d", server1.getLocalPort())),
-              new URL(String.format("http://localhost:%d", server2.getLocalPort())),
-              new URL(String.format("http://localhost:%d", server3.getLocalPort()))),
-          HELLO_SHA256,
-          ImmutableMap.of(),
-          Optional.absent());
-    }
-  }
-
-  @Test
-  public void firstUrlSocketTimeout_secondOk() throws Exception {
-
-    try (ServerSocket server1 = new ServerSocket(0, 1, InetAddress.getByName(null));
-        ServerSocket server2 = new ServerSocket(0, 1, InetAddress.getByName(null))) {
-
+    final CyclicBarrier barrier = new CyclicBarrier(2);
+    try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName(null))) {
       @SuppressWarnings("unused")
       Future<?> possiblyIgnoredError =
           executor.submit(
               () -> {
-                try (Socket socket = server1.accept()) {
-                  // Do nothing to cause SocketTimeoutException on client side.
+                barrier.await();
+                for (String status : asList("503 MELTDOWN", "500 ERROR", "200 OK")) {
+                  try (Socket socket = server.accept()) {
+                    readHttpRequest(socket.getInputStream());
+                    sendLines(
+                        socket,
+                        "HTTP/1.1 " + status,
+                        "Date: Fri, 31 Dec 1999 23:59:59 GMT",
+                        "Connection: close",
+                        "",
+                        "hello");
+                  }
                 }
                 return null;
               });
-
-      @SuppressWarnings("unused")
-      Future<?> possiblyIgnoredError2 =
-          executor.submit(
-              () -> {
-                try (Socket socket = server2.accept()) {
-                  readHttpRequest(socket.getInputStream());
-                  sendLines(
-                      socket,
-                      "HTTP/1.1 200 OK",
-                      "Date: Fri, 31 Dec 1999 23:59:59 GMT",
-                      "Connection: close",
-                      "",
-                      "hello");
-                }
-                return null;
-              });
-
+      barrier.await();
       try (HttpStream stream =
           multiplexer.connect(
-              ImmutableList.of(
-                  new URL(String.format("http://localhost:%d", server1.getLocalPort())),
-                  new URL(String.format("http://localhost:%d", server2.getLocalPort()))),
+              new URL(String.format("http://localhost:%d", server.getLocalPort())),
               HELLO_SHA256,
               ImmutableMap.of(),
               Optional.absent())) {
         assertThat(toByteArray(stream)).isEqualTo("hello".getBytes(US_ASCII));
       }
+    }
+  }
+
+  @Test
+  public void serverDown_throwsIOException() throws Exception {
+    final CyclicBarrier barrier = new CyclicBarrier(2);
+    try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName(null))) {
+      Future<?> unused =
+          executor.submit(
+              () -> {
+                barrier.await();
+                while (true) {
+                  try (Socket socket = server.accept()) {
+                    readHttpRequest(socket.getInputStream());
+                    sendLines(
+                        socket,
+                        "HTTP/1.1 503 MELTDOWN",
+                        "Date: Fri, 31 Dec 1999 23:59:59 GMT",
+                        "Warning: https://youtu.be/6M6samPEMpM",
+                        "Connection: close",
+                        "",
+                        "");
+                  }
+                }
+              });
+      barrier.await();
+      thrown.expect(IOException.class);
+      thrown.expectMessage("GET returned 503 MELTDOWN");
+      multiplexer.connect(
+          new URL(String.format("http://localhost:%d", server.getLocalPort())),
+          HELLO_SHA256,
+          ImmutableMap.of(),
+          Optional.absent());
     }
   }
 }

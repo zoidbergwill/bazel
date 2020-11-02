@@ -43,11 +43,8 @@ public final class HttpUtils {
     return Ascii.equalsIgnoreCase(protocol, url.getProtocol());
   }
 
-  static void checkUrlsArgument(Collection<URL> urls) {
-    Preconditions.checkArgument(!urls.isEmpty(), "urls list empty");
-    for (URL url : urls) {
-      Preconditions.checkArgument(isUrlSupportedByDownloader(url), "unsupported protocol: %s", url);
-    }
+  static void checkUrlArgument(URL url) {
+    Preconditions.checkArgument(isUrlSupportedByDownloader(url), "unsupported protocol: %s", url);
   }
 
   static String getExtension(String path) {

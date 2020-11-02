@@ -26,6 +26,7 @@ import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.util.JavaSleeper;
 import com.google.devtools.build.lib.util.Sleeper;
 import com.google.devtools.build.lib.vfs.Path;
+
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
@@ -33,7 +34,6 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -78,7 +78,7 @@ public class HttpDownloader implements Downloader {
         new ProgressInputStream.Factory(locale, clock, eventHandler);
     HttpStream.Factory httpStreamFactory = new HttpStream.Factory(progressInputStreamFactory);
     HttpConnectorMultiplexer multiplexer =
-        new HttpConnectorMultiplexer(eventHandler, connector, httpStreamFactory, clock, sleeper);
+        new HttpConnectorMultiplexer(eventHandler, connector, httpStreamFactory);
 
     // Iterate over urls and download the file falling back to the next url if previous failed,
     // while reporting progress to the CLI.
@@ -89,8 +89,7 @@ public class HttpDownloader implements Downloader {
     for (URL url : urls) {
       semaphore.acquire();
 
-      try (HttpStream payload =
-              multiplexer.connect(Collections.singletonList(url), checksum, authHeaders, type);
+      try (HttpStream payload = multiplexer.connect(url, checksum, authHeaders, type);
           OutputStream out = destination.getOutputStream()) {
         try {
           ByteStreams.copy(payload, out);
