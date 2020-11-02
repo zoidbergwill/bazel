@@ -17,7 +17,6 @@ package com.google.devtools.build.lib.bazel.repository.downloader;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.devtools.build.lib.bazel.repository.downloader.DownloaderTestUtils.makeUrl;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,12 +29,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipException;
 import org.junit.Before;
@@ -132,29 +129,6 @@ public class HttpStreamTest {
         streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
       assertThat(ByteStreams.toByteArray(stream)).isEqualTo(gzData);
     }
-  }
-
-  @Test
-  public void threadInterrupted_haltsReadingAndThrowsInterrupt() throws Exception {
-    final AtomicBoolean wasInterrupted = new AtomicBoolean();
-    Thread thread =
-        new Thread(
-            () -> {
-              try (HttpStream stream =
-                  streamFactory.create(connection, AURL, Optional.absent(), Optional.absent())) {
-                stream.read();
-                Thread.currentThread().interrupt();
-                stream.read();
-                fail();
-              } catch (InterruptedIOException expected) {
-                wasInterrupted.set(true);
-              } catch (IOException ignored) {
-                // ignored
-              }
-            });
-    thread.start();
-    thread.join();
-    assertThat(wasInterrupted.get()).isTrue();
   }
 
   private static byte[] gzipData(byte[] bytes) throws IOException {

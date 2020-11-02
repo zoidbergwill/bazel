@@ -57,7 +57,7 @@ final class HttpStream extends FilterInputStream {
         Optional<Checksum> checksum,
         Optional<String> type)
         throws IOException {
-      InputStream stream = new InterruptibleInputStream(connection.getInputStream());
+      InputStream stream = connection.getInputStream();
       try {
         stream = progressInputStreamFactory.create(stream, connection.getURL(), originalUrl);
 

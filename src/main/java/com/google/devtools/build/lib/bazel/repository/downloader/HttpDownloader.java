@@ -20,7 +20,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.io.ByteStreams;
 import com.google.devtools.build.lib.analysis.BlazeVersionInfo;
 import com.google.devtools.build.lib.buildeventstream.FetchEvent;
 import com.google.devtools.build.lib.clock.Clock;
@@ -31,6 +30,7 @@ import com.google.devtools.build.lib.util.JavaSleeper;
 import com.google.devtools.build.lib.util.Sleeper;
 import com.google.devtools.build.lib.vfs.Path;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.SocketTimeoutException;
@@ -47,6 +47,7 @@ import java.util.concurrent.Semaphore;
 /** HTTP implementation of {@link Downloader}. */
 public class HttpDownloader implements Downloader {
   private static final int MAX_PARALLEL_DOWNLOADS = 8;
+  private static final int BUFFER_SIZE = 8192;
   private static final Semaphore semaphore = new Semaphore(MAX_PARALLEL_DOWNLOADS, true);
   private static final ImmutableMap<String, String> REQUEST_HEADERS =
       new ImmutableMap.Builder()
@@ -122,7 +123,7 @@ public class HttpDownloader implements Downloader {
                   type);
           OutputStream out = destination.getOutputStream()) {
         try {
-          ByteStreams.copy(payload, out);
+          copyStream(payload, out);
         } catch (SocketTimeoutException e) {
           // SocketTimeoutExceptions are InterruptedIOExceptions; however they do not signify
           // an external interruption, but simply a failed download due to some server timing
@@ -163,6 +164,21 @@ public class HttpDownloader implements Downloader {
       }
 
       throw exception;
+    }
+  }
+
+  private static void copyStream(InputStream payload, OutputStream out)
+      throws InterruptedException, IOException {
+    byte[] buf = new byte[BUFFER_SIZE];
+    while (true) {
+      if (Thread.interrupted()) {
+        throw new InterruptedException();
+      }
+      int r = payload.read(buf);
+      if (r == -1) {
+        break;
+      }
+      out.write(buf, 0, r);
     }
   }
 }
