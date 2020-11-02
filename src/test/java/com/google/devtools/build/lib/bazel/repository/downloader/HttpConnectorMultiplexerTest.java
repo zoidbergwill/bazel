@@ -31,7 +31,6 @@ import com.google.common.base.Function;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.bazel.repository.cache.RepositoryCache.KeyType;
-import com.google.devtools.build.lib.bazel.repository.downloader.RetryingInputStream.Reconnector;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.testutil.ManualClock;
 import com.google.devtools.build.lib.util.Sleeper;
@@ -91,25 +90,13 @@ public class HttpConnectorMultiplexerTest {
     when(connector.connect(eq(URL2), any(Function.class))).thenReturn(connection2);
     when(connector.connect(eq(URL3), any(Function.class))).thenReturn(connection3);
     when(streamFactory.create(
-            same(connection1),
-            any(URL.class),
-            any(Optional.class),
-            any(Reconnector.class),
-            any(Optional.class)))
+            same(connection1), any(URL.class), any(Optional.class), any(Optional.class)))
         .thenReturn(stream1);
     when(streamFactory.create(
-            same(connection2),
-            any(URL.class),
-            any(Optional.class),
-            any(Reconnector.class),
-            any(Optional.class)))
+            same(connection2), any(URL.class), any(Optional.class), any(Optional.class)))
         .thenReturn(stream2);
     when(streamFactory.create(
-            same(connection3),
-            any(URL.class),
-            any(Optional.class),
-            any(Reconnector.class),
-            any(Optional.class)))
+            same(connection3), any(URL.class), any(Optional.class), any(Optional.class)))
         .thenReturn(stream3);
   }
 
@@ -150,12 +137,7 @@ public class HttpConnectorMultiplexerTest {
         .isEqualTo(data1);
     verify(connector).connect(eq(URL1), any(Function.class));
     verify(streamFactory)
-        .create(
-            any(URLConnection.class),
-            any(URL.class),
-            eq(DUMMY_CHECKSUM),
-            any(Reconnector.class),
-            any(Optional.class));
+        .create(any(URLConnection.class), any(URL.class), eq(DUMMY_CHECKSUM), any(Optional.class));
     verifyNoMoreInteractions(sleeper, connector, streamFactory);
   }
 

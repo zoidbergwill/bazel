@@ -19,7 +19,6 @@ import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.analysis.BlazeVersionInfo;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
-import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
 import java.io.IOException;
 import java.io.InputStream;
@@ -100,22 +99,7 @@ final class HttpConnectorMultiplexer {
         getHeaderFunction(REQUEST_HEADERS, authHeaders);
     final URLConnection connection = connector.connect(url, headerFunction);
 
-    return httpStreamFactory.create(
-        connection,
-        url,
-        checksum,
-        (cause, extraHeaders) -> {
-          eventHandler.handle(
-              Event.progress(String.format("Lost connection for %s due to %s", url, cause)));
-          return connector.connect(
-              connection.getURL(),
-              url1 ->
-                  new ImmutableMap.Builder<String, String>()
-                      .putAll(headerFunction.apply(url1))
-                      .putAll(extraHeaders)
-                      .build());
-        },
-        type);
+    return httpStreamFactory.create(connection, url, checksum, type);
   }
 
   public static Function<URL, ImmutableMap<String, String>> getHeaderFunction(

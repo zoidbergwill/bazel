@@ -15,19 +15,13 @@
 package com.google.devtools.build.lib.bazel.repository.downloader;
 
 import com.google.common.base.Optional;
-import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.io.ByteStreams;
-import com.google.devtools.build.lib.bazel.repository.downloader.RetryingInputStream.Reconnector;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
-import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.SequenceInputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.zip.GZIPInputStream;
@@ -41,7 +35,7 @@ import javax.annotation.WillCloseWhenClosed;
 @ThreadCompatible
 final class HttpStream extends FilterInputStream {
 
-  private static final int GZIP_BUFFER_BYTES = 8192;  // same as ByteStreams#copy
+  private static final int GZIP_BUFFER_BYTES = 8192; // same as ByteStreams#copy
   private static final ImmutableSet<String> GZIPPED_EXTENSIONS = ImmutableSet.of("gz", "tgz");
   private static final ImmutableSet<String> GZIP_CONTENT_ENCODING =
       ImmutableSet.of("gzip", "x-gzip");
@@ -57,12 +51,9 @@ final class HttpStream extends FilterInputStream {
     }
 
     HttpStream create(
-        @WillCloseWhenClosed URLConnection connection,
-        URL originalUrl,
-        Optional<Checksum> checksum,
-        Reconnector reconnector)
+        @WillCloseWhenClosed URLConnection connection, URL originalUrl, Optional<Checksum> checksum)
         throws IOException {
-      return create(connection, originalUrl, checksum, reconnector, Optional.<String>absent());
+      return create(connection, originalUrl, checksum, Optional.<String>absent());
     }
 
     @SuppressWarnings("resource")
@@ -70,22 +61,10 @@ final class HttpStream extends FilterInputStream {
         @WillCloseWhenClosed URLConnection connection,
         URL originalUrl,
         Optional<Checksum> checksum,
-        Reconnector reconnector,
         Optional<String> type)
         throws IOException {
       InputStream stream = new InterruptibleInputStream(connection.getInputStream());
       try {
-        // If server supports range requests, we can retry on read errors. See RFC7233 § 2.3.
-        RetryingInputStream retrier = null;
-        if (Iterables.contains(
-                Splitter.on(',')
-                    .trimResults()
-                    .split(Strings.nullToEmpty(connection.getHeaderField("Accept-Ranges"))),
-                "bytes")) {
-          retrier = new RetryingInputStream(stream, reconnector);
-          stream = retrier;
-        }
-
         stream = progressInputStreamFactory.create(stream, connection.getURL(), originalUrl);
 
         // Determine if we need to transparently gunzip. See RFC2616 § 3.5 and § 14.11. Please note
