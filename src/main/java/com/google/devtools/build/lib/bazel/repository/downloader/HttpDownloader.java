@@ -113,27 +113,35 @@ public class HttpDownloader implements Downloader {
       Preconditions.checkArgument(
           HttpUtils.isUrlSupportedByDownloader(url), "unsupported protocol: %s", url);
 
-      try (HttpStream payload =
-              httpStreamFactory.create(
-                  connector.connect(url, getHeaderFunction(REQUEST_HEADERS, authHeaders)),
-                  url,
-                  checksum,
-                  type);
-          OutputStream out = destination.getOutputStream()) {
-        copyStream(payload, out);
-        success = true;
-        break;
-      } catch (IOException e) {
-        if (ioExceptions.isEmpty()) {
-          ioExceptions = new ArrayList<>(1);
+      try {
+        int retries = 0;
+        while (!success && retries++ < 3) {
+          try (HttpStream payload =
+                  httpStreamFactory.create(
+                      connector.connect(url, getHeaderFunction(REQUEST_HEADERS, authHeaders)),
+                      url,
+                      checksum,
+                      type);
+              OutputStream out = destination.getOutputStream()) {
+            copyStream(payload, out);
+            success = true;
+          } catch (IOException e) {
+            if (ioExceptions.isEmpty()) {
+              ioExceptions = new ArrayList<>(1);
+            }
+            ioExceptions.add(e);
+            eventHandler.handle(
+                Event.warn(
+                    "Download from " + url + " failed: " + e.getClass() + " " + e.getMessage()));
+          }
         }
-        ioExceptions.add(e);
-        eventHandler.handle(
-            Event.warn("Download from " + url + " failed: " + e.getClass() + " " + e.getMessage()));
-        continue;
       } finally {
         semaphore.release();
         eventHandler.post(new FetchEvent(url.toString(), success));
+      }
+
+      if (success) {
+        break;
       }
     }
 
