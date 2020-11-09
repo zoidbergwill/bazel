@@ -744,6 +744,7 @@ filegroup(
     srcs = [
         "@android_tools_for_testing//:WORKSPACE",
         "@bazel_skylib//:WORKSPACE",
+        "@bazel_gazelle//:WORKSPACE",
         "@bazel_toolchains//:WORKSPACE",
         "@com_google_protobuf//:WORKSPACE",
         "@openjdk11_darwin_archive//:WORKSPACE",
