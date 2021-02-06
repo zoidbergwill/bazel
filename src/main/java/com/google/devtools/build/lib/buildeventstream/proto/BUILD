@@ -31,3 +31,20 @@ proto_library(
         "//src/main/protobuf:invocation_policy_proto",
     ],
 )
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+
+go_proto_library(
+    name = "build_event_stream_go_proto",
+    importpath = "github.com/bazelbuild/bazel/src/main/java/com/google/devtools/build/lib/buildeventstream/proto",
+    proto = ":build_event_stream_proto",
+    deps = ["//src/main/protobuf:protobuf_go"],
+)
+
+go_library(
+    name = "build_event_stream_go",
+    embed = [":build_event_stream_go_proto"],
+    importpath = "github.com/bazelbuild/bazel/src/main/java/com/google/devtools/build/lib/buildeventstream/proto",
+    visibility = ["//visibility:public"],
+)

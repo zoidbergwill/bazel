@@ -23,6 +23,8 @@ package failure_details;
 
 option java_package = "com.google.devtools.build.lib.server";
 
+option go_package = "github.com/bazelbuild/bazel/src/main/protobuf";
+
 import "google/protobuf/descriptor.proto";
 
 message FailureDetailMetadata {

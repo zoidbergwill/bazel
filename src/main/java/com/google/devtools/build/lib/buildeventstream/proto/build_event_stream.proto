@@ -23,6 +23,8 @@ import "src/main/protobuf/invocation_policy.proto";
 option java_package = "com.google.devtools.build.lib.buildeventstream";
 option java_outer_classname = "BuildEventStreamProtos";
 
+option go_package = "github.com/bazelbuild/bazel/src/main/java/com/google/devtools/build/lib/buildeventstream/proto";
+
 // Identifier for a build event. It is deliberately structured to also provide
 // information about which build target etc the event is related to.
 //

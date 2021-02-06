@@ -298,3 +298,42 @@ filegroup(
         ":xcode_java_proto_srcs",
     ],
 )
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+
+go_proto_library(
+    name = "command_line_go_proto",
+    importpath = "github.com/bazelbuild/bazel/src/main/protobuf",
+    proto = ":command_line_proto",
+)
+
+go_proto_library(
+    name = "failure_details_go_proto",
+    importpath = "github.com/bazelbuild/bazel/src/main/protobuf",
+    proto = ":failure_details_proto",
+)
+
+go_proto_library(
+    name = "invocation_policy_go_proto",
+    importpath = "github.com/bazelbuild/bazel/src/main/protobuf",
+    proto = ":invocation_policy_proto",
+)
+
+go_proto_library(
+    name = "option_filters_go_proto",
+    importpath = "github.com/bazelbuild/bazel/src/main/protobuf",
+    proto = ":option_filters_proto",
+)
+
+go_library(
+    name = "protobuf_go",
+    embed = [
+        ":command_line_go_proto",
+        ":failure_details_go_proto",
+        ":option_filters_go_proto",
+        ":invocation_policy_go_proto",
+    ],
+    importpath = "github.com/bazelbuild/bazel/src/main/protobuf",
+    visibility = ["//visibility:public"],
+)
